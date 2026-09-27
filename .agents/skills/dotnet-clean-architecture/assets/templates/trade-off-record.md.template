@@ -1,0 +1,27 @@
+# [Short, decision-framed title — e.g. "Command dispatch: hand-rolled vs. MediatR"]
+
+**Status:** Proposed / Accepted / Superseded by [link]
+**Date:** YYYY-MM-DD
+
+## Context
+
+What forced this decision? One or two sentences — the constraint, not the whole backstory.
+
+## Options considered
+
+- **Option A** — what it is, in one line.
+- **Option B** — what it is, in one line.
+
+(Rarely more than three. If there are five real options, the decision is being made too early.)
+
+## Decision
+
+Which option, and the one or two reasons that actually tipped it — not every pro and con weighed, just the ones that mattered.
+
+## Trade-offs accepted
+
+What does *not* picking the other option cost? Be concrete: a feature not gained, a risk taken on, a migration deferred.
+
+## Revisit when
+
+The condition that would make this worth reopening. If there's no such condition, say "no planned revisit" rather than leaving it implicit.

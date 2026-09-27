@@ -1,0 +1,65 @@
+// Template: sealed-record state machine + transitions.
+// Replace AGGREGATE with the entity name (e.g. Reservation, Order, Subscription).
+// Add one sealed record per real lifecycle stage from your event-storming board —
+// don't invent a stage that isn't backed by an actual event. Delete stages/fields
+// that don't apply. See references/domain-modeling.md#status-as-type and #transitions.
+
+// ---- Domain/AGGREGATEState.cs ----
+public abstract record AGGREGATEState
+{
+    public required AGGREGATEId Id { get; init; }
+    public required DateTime CreatedAt { get; init; }
+    // ... fields common to every stage
+}
+
+public sealed record Draft_AGGREGATE : AGGREGATEState;
+
+public sealed record Active_AGGREGATE : AGGREGATEState
+{
+    public required DateTime ActivatedAt { get; init; }
+    // ... fields that only exist once active
+}
+
+public sealed record Completed_AGGREGATE : AGGREGATEState
+{
+    public required DateTime ActivatedAt { get; init; }
+    public required DateTime CompletedAt { get; init; }
+}
+
+public sealed record Cancelled_AGGREGATE : AGGREGATEState
+{
+    public required DateTime CancelledAt { get; init; }
+    public required string Reason { get; init; }
+}
+
+// ---- Domain/AGGREGATETransitions.cs ----
+// Every method's parameter is the SPECIFIC predecessor type, never AGGREGATEState.
+// That is what makes an invalid call a compile error instead of a runtime check.
+public static class AGGREGATETransitions
+{
+    public static Result<Active_AGGREGATE, DomainError> Activate(Draft_AGGREGATE draft)
+    {
+        // if (/* rule that can fail */) return Result<Active_AGGREGATE, DomainError>.Fail(new /* Error */());
+        return Result<Active_AGGREGATE, DomainError>.Ok(new Active_AGGREGATE
+        {
+            Id = draft.Id, CreatedAt = draft.CreatedAt, ActivatedAt = DateTime.UtcNow,
+        });
+    }
+
+    public static Completed_AGGREGATE Complete(Active_AGGREGATE active) => new()
+    {
+        Id = active.Id, CreatedAt = active.CreatedAt, ActivatedAt = active.ActivatedAt, CompletedAt = DateTime.UtcNow,
+    };
+
+    // Add one overload per predecessor type that this transition is actually
+    // allowed from — do not take the abstract AGGREGATEState "just in case".
+    public static Cancelled_AGGREGATE Cancel(Draft_AGGREGATE from, string reason) => new()
+    { Id = from.Id, CreatedAt = from.CreatedAt, CancelledAt = DateTime.UtcNow, Reason = reason };
+
+    public static Cancelled_AGGREGATE Cancel(Active_AGGREGATE from, string reason) => new()
+    { Id = from.Id, CreatedAt = from.CreatedAt, CancelledAt = DateTime.UtcNow, Reason = reason };
+}
+
+// Don't forget, once the real names are filled in:
+//   <WarningsAsErrors>CS8509;CS8524</WarningsAsErrors>
+// in the .csproj, so a switch over AGGREGATEState that misses a new case fails the build.

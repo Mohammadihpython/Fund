@@ -1,0 +1,28 @@
+// Template: smart-constructor value object.
+// Replace TYPE_NAME, the wrapped Value's type, and the rule(s) inside Create.
+// Delete the Create/validation ceremony entirely if this value object has no
+// actual validity rule — a plain `record` with `required init` properties is
+// enough in that case. See references/domain-modeling.md#smart-constructors.
+
+public readonly record struct TYPE_NAME
+{
+    public /* underlying type, e.g. Guid / decimal / int / string */ Value { get; }
+
+    private TYPE_NAME(/* underlying type */ value) => Value = value;
+
+    public static Result<TYPE_NAME, DomainError> Create(/* underlying type */ value)
+    {
+        // One rule per line. Each should map to something a domain expert would
+        // recognize as a business reason, not just "type system busywork".
+        if (/* invalid condition */)
+            return Result<TYPE_NAME, DomainError>.Fail(new /* SpecificError */(value));
+
+        return Result<TYPE_NAME, DomainError>.Ok(new TYPE_NAME(value));
+    }
+
+    // Only for callers that already hold trusted data (e.g. straight out of a
+    // repository's FromPersistence). Never call this on raw request input —
+    // that defeats "parse, don't validate". Delete if this type is never
+    // reconstructed from storage.
+    public static TYPE_NAME FromTrustedSource(/* underlying type */ value) => new(value);
+}
