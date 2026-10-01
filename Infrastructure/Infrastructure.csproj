@@ -1,0 +1,35 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <RootNamespace>Infrastructure</RootNamespace>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\Domain\Domain.csproj" />
+        <ProjectReference Include="..\Application\Application.csproj" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <!-- PrivateAssets=all: these are build-time tools. The app must not take a
+             dependency on the EF design package at runtime. -->
+        <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.11" />
+        <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.0">
+            <PrivateAssets>all</PrivateAssets>
+            <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+        </PackageReference>
+        <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="10.0.0" />
+        <PackageReference Include="Microsoft.Extensions.Identity.Core" Version="10.0.11" />
+
+        <!-- Transitive of Microsoft.Build.Tasks.Core (pulled in by EF's design-time tooling),
+             which resolves to 9.0.0 — a version with several known advisories (NU1903).
+             Nothing here runs in production; it is build-time only, but the audit warning is
+             noise that trains people to ignore warnings, so pin it to a patched release. -->
+        <PackageReference Include="System.Security.Cryptography.Xml" Version="9.0.20">
+            <PrivateAssets>all</PrivateAssets>
+        </PackageReference>
+    </ItemGroup>
+
+</Project>

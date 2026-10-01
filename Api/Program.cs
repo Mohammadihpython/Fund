@@ -1,12 +1,33 @@
+using Api.Endpoints;
+using Application;
+using Infrastructure;
+
 var builder = WebApplication.CreateBuilder(args);
 
-// Add services to the container.
-// Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
 builder.Services.AddOpenApi();
+
+// The connection string is read from configuration, which is backed by user-secrets locally
+// and environment variables when deployed. It is deliberately NOT in appsettings.json — see the
+// repo-hygiene rule in AGENTS.md. Failing here at startup beats failing on the first query.
+var connectionString = builder.Configuration.GetConnectionString("FallahFund")
+    ?? throw new InvalidOperationException(
+        "Connection string 'FallahFund' is not configured. Set it via " +
+        "`dotnet user-secrets --project Api set \"ConnectionStrings:FallahFund\" \"<value>\"`.");
+
+builder.Services.AddInfrastructure(connectionString);
+builder.Services.AddJwtAuthentication(builder.Configuration);
+builder.Services.AddApplication();
+
+// No real SMTP provider exists yet, so development logs the verification token instead of
+// sending it. Guarded to Development inside the extension method — registering this in
+// production would put verification tokens in the log.
+if (builder.Environment.IsDevelopment())
+{
+    builder.Services.AddDevelopmentEmailSender();
+}
 
 var app = builder.Build();
 
-// Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
@@ -14,28 +35,17 @@ if (app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 
-var summaries = new[]
-{
-    "Freezing", "Bracing", "Chilly", "Cool", "Mild", "Warm", "Balmy", "Hot", "Sweltering", "Scorching"
-};
+// Order matters: authentication must run before authorization, and both before the endpoints
+// that inspect User.
+app.UseAuthentication();
+app.UseAuthorization();
 
-app.MapGet("/weatherforecast", () =>
-    {
-        var forecast = Enumerable.Range(1, 5).Select(index =>
-                new WeatherForecast
-                (
-                    DateOnly.FromDateTime(DateTime.Now.AddDays(index)),
-                    Random.Shared.Next(-20, 55),
-                    summaries[Random.Shared.Next(summaries.Length)]
-                ))
-            .ToArray();
-        return forecast;
-    })
-    .WithName("GetWeatherForecast");
+app.MapAuthEndpoints();
 
 app.Run();
 
-record WeatherForecast(DateOnly Date, int TemperatureC, string? Summary)
-{
-    public int TemperatureF => 32 + (int)(TemperatureC / 0.5556);
-}
+/// <summary>
+/// Named so integration tests can reference the entry-point assembly with
+/// <c>WebApplicationFactory&lt;Program&gt;</c>.
+/// </summary>
+public partial class Program;

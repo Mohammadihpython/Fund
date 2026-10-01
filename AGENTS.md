@@ -7,10 +7,10 @@ states the rules that must hold in this repo, that skill explains the patterns.
 
 ## What this repo is
 
-A .NET 10 / C# 14 solution using Clean Architecture (Onion) with vertical slices. The domain
-is charitable fundraising: money moves in as donations and out as disbursements, so the
-interesting rules are about amounts, lifecycle states, and who is allowed to trigger a
-transition. Read the actual domain types before assuming anything beyond that.
+A .NET 10 / C# 14 solution using Clean Architecture (Onion), organised feature-first inside each
+layer. The domain is charitable fundraising: money moves in as donations and out as
+disbursements, so the interesting rules are about amounts, lifecycle states, and who is allowed to
+trigger a transition. Read the actual domain types before assuming anything beyond that.
 
 **Target framework:** `net10.0` · **Language:** C# 14 · **SDK:** 10.0.111 (also 8.0 and
 9.0 installed — pin with `global.json` if the wrong SDK starts being selected)
@@ -20,47 +20,69 @@ transition. Read the actual domain types before assuming anything beyond that.
 The git root is this directory. Note its name ends in a trailing space
 (`FallahFund /`), and so does the solution file — always quote the path.
 
-| Project | May reference | Contains (folder skeleton on disk) |
+| Project | May reference | Contains |
 |---|---|---|
-| `FallahFund.Domain` | *nothing* — no NuGet packages, no `Microsoft.*` | `Entities/`, `ValueObjects/`, `States/`, `Transitions/`, `Events/`, `Repositories/` (interfaces only), `Shared/` |
-| `FallahFund.Application` | `Domain` | `Commands/`, `Handlers/`, `Shared/` |
-| `FallahFund.Infrastructure` | `Application`, `Domain` | `Entities/` (persistence models), `Mapping/`, `Repositories/` (adapters), `Shared/` |
-| `FallahFund.Api` | `Application`, `Infrastructure` | `Program.cs`, endpoints, DI wiring, OpenAPI |
+| `Domain` | `SharedKernel` *only* — no NuGet packages, no `Microsoft.*` | `Users/States/`, `Users/Transitions/`, `Users/ValueObjects/`, `Users/Events/`, `Users/Ports/` (interfaces only) |
+| `Application` | `Domain` | `Users/Commands/`, `Users/Handlers/`, `Users/Queries/` |
+| `Infrastructure` | `Domain` (+ `Application` once it exists) | `Persistence/Entities/`, `Persistence/Configuration/`, `Persistence/Migrations/`, `Mapping/`, `Repositories/` (adapters), `DependencyInjection.cs` |
+| `Api` | `Application`, `Infrastructure`, `SharedKernel` | `Program.cs`, endpoints, DI wiring, OpenAPI |
+| `SharedKernel` | *nothing* | `Result`, `Error`, `ErrorType`, `ResponseModel` |
+
+Features are folders *inside* each layer project (`Domain/Users/`, later `Application/Users/`),
+not projects of their own. Namespace = `<Layer>.<Feature>`, so `Domain/Users/States/UserState.cs`
+declares `namespace Domain.Users;` and `Infrastructure/Repositories/EfUserRepository.cs` declares
+`namespace Infrastructure.Repositories;`.
 
 ### Current state — read this before assuming a project exists
 
-Only **`FallahFund.Api`** is committed (the stock `dotnet new web` template plus the
-weatherforecast sample endpoint). The other three project folders exist on disk as
-**empty directories with stale `bin/` and `obj/` output from a build that was deleted** —
-their `.csproj` files are gone and they are **not in the solution file**.
+All four layers exist and the **auth slice is complete end-to-end**: register → verify email →
+sign in → JWT → authenticated endpoint.
 
-So:
+- `Application/Users/` — handlers (`RegisterUser`, `VerifyEmail`, `ResendVerification`,
+  `SignInUser`), ports (`IPasswordHasher`, `IAccessTokenIssuer`, `IEmailSender`, `PasswordRules`).
+- `Infrastructure/Security/` — `Pbkdf2PasswordHasher`, `JwtTokenIssuer`, `JwtOptions`.
+- `Api/Endpoints/AuthEndpoints.cs` — 4 anonymous endpoints plus `GET /api/auth/me` (authorized).
+- **There is no test project.** Everything above was verified with a throwaway harness that built
+  the real DI graph; the checks did not survive as tests. Adding `FallahFund.Tests` is the
+  highest-value next step.
+- **No real email provider.** `LoggingEmailSender` writes the verification token to the log and is
+  registered only in Development, guarded inside `AddDevelopmentEmailSender()`. A production
+  deployment with no email provider is a startup gap, not a working system.
+- **`Api/Extensions/ResultExtensions.cs` declares `namespace SharedKernel` but compiles into the
+  Api assembly** and uses `StatusCodes`, so it cannot move into `SharedKernel` without giving that
+  project a `<FrameworkReference Include="Microsoft.AspNetCore.App" />`. Leave it in `Api`
+  (mapping errors to HTTP *is* an Api concern) or split the HTTP part out — but do not assume it
+  is a `SharedKernel` type. The auth-specific HTTP mapping is `Api/Endpoints/ResultExtensions.cs`.
+- **No secrets are committed.** Neither the connection string nor `Jwt:SigningKey` is in any
+  `appsettings*.json`; the app **refuses to start** without both. See "Running locally".
+- `.idea/` is tracked in git and is **stale** — it still references a project layout that no
+  longer exists. Don't trust it; read `FallahFund .sln`.
 
-- `FallahFund.Api/bin/Debug/net10.0/` contains `FallahFund.Domain.dll`,
-  `FallahFund.Application.dll`, `FallahFund.Infrastructure.dll`. **These are stale
-  artifacts of code that no longer exists.** Do not read them as the current design, do
-  not decompile them, do not trust them as a reference for what to build.
-- The last build's dependency graph, recovered from `FallahFund.Api.deps.json`, is the
-  intended one and matches the table above: Domain ← Application ← Infrastructure ← Api,
-  with `Microsoft.EntityFrameworkCore(.SqlServer)` 10.0.0 in Infrastructure and
-  `Microsoft.AspNetCore.OpenApi` 10.0.11 in Api.
-- If you need the other three projects, **create them** (see below). Do not assume a
-  project reference resolves just because a folder with that name exists.
-
-To recreate the missing projects:
+### Running locally
 
 ```bash
-dotnet new classlib -n FallahFund.Domain        -o FallahFund.Domain        -f net10.0
-dotnet new classlib -n FallahFund.Application   -o FallahFund.Application   -f net10.0
-dotnet new classlib -n FallahFund.Infrastructure -o FallahFund.Infrastructure -f net10.0
-dotnet sln "FallahFund .sln" add FallahFund.Domain FallahFund.Application FallahFund.Infrastructure
-dotnet add FallahFund.Application   reference FallahFund.Domain
-dotnet add FallahFund.Infrastructure reference FallahFund.Application FallahFund.Domain
-dotnet add FallahFund.Api           reference FallahFund.Application FallahFund.Infrastructure
+# connection string is required at startup; keep it out of appsettings.json
+dotnet user-secrets --project Api set "ConnectionStrings:FallahFund" \
+  "Server=localhost,1433;Database=FallahFund;User Id=sa;Password=<...>;TrustServerCertificate=True"
+
+# signing key too. Must be base64 and decode to >= 32 bytes, or startup fails.
+dotnet user-secrets --project Api set "Jwt:SigningKey" "$(openssl rand -base64 48)"
+
+dotnet ef database update --project Infrastructure    # applies Infrastructure/Persistence/Migrations
 ```
 
-Delete `Class1.cs` and the default `bin/`/`obj/` in each new project before adding code.
-Re-enable the properties the template already sets (`Nullable`, `ImplicitUsings`).
+`Jwt:Issuer`, `Jwt:Audience` and `Jwt:AccessTokenLifetimeMinutes` are in `appsettings.json` because
+they are not secrets. `Jwt:SigningKey` is not, and must never be.
+
+Getting a verification token in Development: `LoggingEmailSender` writes it to the log at
+`Warning` level, so `dotnet run --project Api` plus `POST /api/auth/register` gives you the token
+in the console. This is the reason that sender is Development-only.
+
+`dotnet ef` is run **from `Infrastructure`**, not `Api`: `Infrastructure/Persistence/FallahFundDbContextFactory.cs`
+supplies a placeholder connection string so scaffolding a migration needs neither a configured one
+nor a running host. Invoked from the solution root it fails with a misleading *"startup project
+doesn't reference Microsoft.EntityFrameworkCore.Design"* — add `--project Infrastructure`.
+
 
 ## Commands
 
@@ -68,8 +90,8 @@ The solution filename has a trailing space — **quote it or the shell splits it
 
 ```bash
 dotnet build "FallahFund .sln"                       # verified working
-dotnet run --project FallahFund.Api                  # http://localhost:5119, https://localhost:7026
-dotnet test                                        # no test project exists yet — see below
+dotnet run --project Api                             # http://localhost:5119, https://localhost:7026
+dotnet test                                          # no test project exists yet — see below
 ```
 
 There is **no test project, no `.editorconfig`, no `Directory.Build.props`, and no
@@ -80,8 +102,8 @@ enforces the dependency rule, so the rule fails the build instead of failing rev
 
 ## The dependency rule
 
-`Domain → (nothing)` · `Application → Domain` · `Infrastructure → Application, Domain` ·
-`Api → Application, Infrastructure`
+`Domain → (SharedKernel only)` · `Application → Domain` · `Infrastructure → Domain, Application`
+· `Api → Application, Infrastructure`
 
 - **Domain references no NuGet package.** Not EF Core, not `Microsoft.AspNetCore.*`, not
   MediatR, not a logging facade. If a domain file needs one of those, the design is wrong.
@@ -91,6 +113,9 @@ enforces the dependency rule, so the rule fails the build instead of failing rev
 - **Infrastructure → Application is for wiring only** (registering handlers in DI), never
   for logic. If Infrastructure needs a rule from Application, the rule belongs in Domain.
 - **Nothing references Api.** Not even tests of the other layers.
+- **`UserMapper` is the only file allowed to switch on lifecycle status.** The `UserStatus` enum
+  exists solely for the database, and it lives in `Infrastructure/Persistence/Entities/`. A second
+  status switch anywhere else means a rule has leaked out of the domain — fold it into the mapper.
 
 ## Conventions
 
@@ -102,8 +127,8 @@ enforces the dependency rule, so the rule fails the build instead of failing rev
   smart constructor that returns the domain type or a `Result<T, Error>`. Past that
   boundary, do not re-check what the type already guarantees.
 - **Lifecycle is a type, not a field.** If something has states (`Pending` → `Confirmed` →
-  `Disbursed` → `Cancelled`), model it as a sealed-record hierarchy in `Domain/States`
-  with transitions in `Domain/Transitions` — not an enum plus nullable timestamp fields.
+  `Disbursed` → `Cancelled`), model it as a sealed-record hierarchy in `Domain/Users/States`
+  with transitions in `Domain/Users/Transitions` — not an enum plus nullable timestamp fields.
   Adding a `bool IsCancelled` to an existing type is the anti-pattern this rule exists to
   prevent.
 - **Primitives are boundary-only.** `Guid`/`string`/`decimal` are fine in an API request
